@@ -2,39 +2,49 @@
 #include <WiFiS3.h>
 #include <ArduinoHttpClient.h>
 
-// Wi-Fi credentials
+// WiFi credentials
 const char* ssid = "Fonseca";
 const char* password = "FonElz5516";
 
-// --- Beeceptor TEST setup ---
-const char* server = "tempcluster.free.beeceptor.com"; // Beeceptor subdomain
-const int port = 443;                                  // HTTPS
-const char* postPath = "/";                            // Beeceptor root path
+// --- Test server (Beeceptor) ---
+//const char* testServer = "tempcluster.free.beeceptor.com";
+//const int testPort = 443;
+//const char* testPath = "/";
 
-// --- PRODUCTION server ---
-// const char* server = "apicontainer.57concrete.net";   // Your live API domain
-// const int port = 443;                                 // HTTPS
-// const char* postPath = "/v1/container";               // Your API endpoint path
+// --- Production server (commented for now) ---
+const char* prodServer = "apicontainer.57concrete.net";
+const int prodPort = 443;
+const char* prodPath = "/v1/container";
+
+// Choose server to use
+//const char* server = testServer;
+//const int port = testPort;
+//const char* postPath = testPath;
+
+const char* server = prodServer;
+const int port = prodPort;
+const char* postPath = prodPath;
+
 
 // SoftwareSerial for XBee (RX, TX)
-SoftwareSerial xbeeSerial(2, 3);  // Change if needed for your XBee shield
+SoftwareSerial xbeeSerial(2, 3);
 
-WiFiSSLClient wifiClient;         // Use WiFiClient for HTTP (port 80)
-HttpClient httpClient = HttpClient(wifiClient, server, port);
+WiFiSSLClient wifiClient;
+HttpClient httpClient(wifiClient, server, port);
 
 void setup() {
   Serial.begin(115200);
   xbeeSerial.begin(9600);
-
+  delay(1000);
   Serial.println("Receiver Starting...");
-  Serial.print("Connecting to WiFi");
 
+  // Connect to WiFi
   WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-
   Serial.println("\nConnected to WiFi!");
   Serial.println("Receiver Ready");
 }
@@ -51,17 +61,16 @@ void loop() {
 
 void sendToServer(const String& payload) {
   int sepIndex = payload.indexOf(':');
-  if (sepIndex == -1 || sepIndex < 3) {
-    Serial.println("Invalid format");
+  if (sepIndex == -1) {
+    Serial.println("Invalid data format");
     return;
   }
 
-  String fullID = payload.substring(0, sepIndex);       // e.g. "ID01"
-  String shortID = fullID.substring(2);                 // e.g. "01"
-  String temperatureStr = payload.substring(sepIndex + 1); // e.g. "70.3"
+  String sensorID = payload.substring(2, sepIndex);   // "01" from "ID01"
+  String tempValue = payload.substring(sepIndex + 1); // temperature
 
-  // Construct JSON
-  String json = "{\"temperature\":" + temperatureStr + ",\"ID\":\"" + shortID + "\"}";
+  String json = "{\"temperature\":" + tempValue + ",\"number\":\"" + sensorID + "\"}";
+
   Serial.println("Sending JSON: " + json);
 
   httpClient.beginRequest();
@@ -75,10 +84,11 @@ void sendToServer(const String& payload) {
   int statusCode = httpClient.responseStatusCode();
   String response = httpClient.responseBody();
 
-  Serial.print("Status code: ");
+  Serial.print("HTTP Status: ");
   Serial.println(statusCode);
   Serial.print("Response: ");
   Serial.println(response);
 
   httpClient.stop();
 }
+
