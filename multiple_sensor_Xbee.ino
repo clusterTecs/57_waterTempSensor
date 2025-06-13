@@ -1,74 +1,72 @@
-//Multi water sensor temperature reader and sending using Xbee
-
-#include <SoftwareSerial.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
+#include <SoftwareSerial.h>
 
-// XBee communication
-SoftwareSerial xbeeSerial(2, 3); // RX, TX
+// Define sensor pins
+#define ONE_WIRE_BUS_1 13
+#define ONE_WIRE_BUS_2 12
+#define ONE_WIRE_BUS_3 11
+#define ONE_WIRE_BUS_4 10
 
-// Define pins for each DS18B20 sensor
-#define SENSOR_PIN_1 13
-#define SENSOR_PIN_2 12
-#define SENSOR_PIN_3 11
-#define SENSOR_PIN_4 10
+// XBee communication (TX=2, RX=3)
+SoftwareSerial xbeeSerial(2, 3);
 
-// OneWire instances for each sensor
-OneWire oneWire1(SENSOR_PIN_1);
-OneWire oneWire2(SENSOR_PIN_2);
-OneWire oneWire3(SENSOR_PIN_3);
-OneWire oneWire4(SENSOR_PIN_4);
+// Create OneWire instances
+OneWire oneWire1(ONE_WIRE_BUS_1);
+OneWire oneWire2(ONE_WIRE_BUS_2);
+OneWire oneWire3(ONE_WIRE_BUS_3);
+OneWire oneWire4(ONE_WIRE_BUS_4);
 
-// DallasTemperature objects for each sensor
+// Create DallasTemperature instances
 DallasTemperature sensor1(&oneWire1);
 DallasTemperature sensor2(&oneWire2);
 DallasTemperature sensor3(&oneWire3);
 DallasTemperature sensor4(&oneWire4);
 
-// Sensor IDs
-const char* sensorIDs[4] = {"ID4-S1", "ID4-S2", "ID4-S3", "ID4-S4"};
-
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   xbeeSerial.begin(9600);
 
   sensor1.begin();
   sensor2.begin();
   sensor3.begin();
   sensor4.begin();
+
+  Serial.println("Sender with 4 sensors started");
 }
 
 void loop() {
-  // Request temperature readings
-  sensor1.requestTemperatures();
-  sensor2.requestTemperatures();
-  sensor3.requestTemperatures();
-  sensor4.requestTemperatures();
+  float tempC1 = readTemperature(sensor1);
+  float tempC2 = readTemperature(sensor2);
+  float tempC3 = readTemperature(sensor3);
+  float tempC4 = readTemperature(sensor4);
 
-  // Read and send each one
-  sendTemperature(sensor1, sensorIDs[0]);
-  sendTemperature(sensor2, sensorIDs[1]);
-  sendTemperature(sensor3, sensorIDs[2]);
-  sendTemperature(sensor4, sensorIDs[3]);
+  float tempF1 = cToF(tempC1);
+  float tempF2 = cToF(tempC2);
+  float tempF3 = cToF(tempC3);
+  float tempF4 = cToF(tempC4);
 
-  delay(2000); // Wait before next cycle
+  // Send each sensor's data as a separate line
+  sendTemperature("ID03", tempF1);
+  sendTemperature("ID04", tempF2);
+  sendTemperature("ID05", tempF3);
+  sendTemperature("ID06", tempF4);
+
+  delay(5000); // Wait 5 seconds between each cycle
 }
 
-void sendTemperature(DallasTemperature& sensor, const char* id) {
-  float celsius = sensor.getTempCByIndex(0);
-  float fahrenheit = (celsius * 9.0 / 5.0) + 32.0;
-
-  // Send via XBee
-  xbeeSerial.print(id);
-  xbeeSerial.print(":");
-  xbeeSerial.println(fahrenheit, 2);
-
-  // Debug
-  Serial.print("Sent → ");
-  Serial.print(id);
-  Serial.print(":");
-  Serial.print(fahrenheit, 2);
-  Serial.println(" °F");
-
-  delay(500); // Small delay between messages
+float readTemperature(DallasTemperature& sensor) {
+  sensor.requestTemperatures();
+  return sensor.getTempCByIndex(0);
 }
+
+float cToF(float celsius) {
+  return celsius * 9.0 / 5.0 + 32.0;
+}
+
+void sendTemperature(const String& sensorID, float tempF) {
+  String message = sensorID + ":" + String(tempF, 2);
+  xbeeSerial.println(message);
+  Serial.println("Sent: " + message);
+}
+
