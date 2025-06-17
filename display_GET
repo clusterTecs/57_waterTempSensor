@@ -1,0 +1,122 @@
+#include <WiFiS3.h>
+#include <WiFiSSLClient.h>
+#include <Arduino_JSON.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_RA8875.h>
+#include <SPI.h>
+
+// WiFi credentials
+const char* ssid = "57CONCRETE-WIFI";
+const char* password = "57red57INTER";
+
+// HTTPS details
+const char* host = "apicontainer.57concrete.net";
+const int httpsPort = 443;
+
+// Sensor IDs
+const int NUM_SENSORS = 4;
+const char* sensorIDs[NUM_SENSORS] = {"01", "02", "03", "04"};
+
+// Display pins
+#define RA8875_CS 10
+#define RA8875_RESET 9
+Adafruit_RA8875 tft = Adafruit_RA8875(RA8875_CS, RA8875_RESET);
+
+// WiFi SSL client
+WiFiSSLClient client;
+
+void connectWiFi() {
+  Serial.print("Connecting to WiFi...");
+  while (WiFi.begin(ssid, password) != WL_CONNECTED) {
+    Serial.print(".");
+    delay(500);
+  }
+  Serial.println(" connected!");
+}
+
+void displayMessage(String msg, uint16_t foreColor, uint16_t backColor, int y) {
+  tft.textMode();
+  tft.textEnlarge(2);
+  tft.textColor(foreColor, backColor);
+  tft.textSetCursor(30, y);
+  tft.print(msg);
+}
+
+void requestAndDisplaySensor(const char* id, int y) {
+  String path = String("/v1/container/") + id;
+
+  Serial.println("Connecting to " + String(host) + path);
+  if (!client.connect(host, httpsPort)) {
+    Serial.println("Connection failed!");
+    displayMessage("Sensor " + String(id) + ": ERR", RA8875_RED, RA8875_BLACK, y);
+    return;
+  }
+
+  // Send HTTP GET request
+  client.println("GET " + path + " HTTP/1.1");
+  client.println("Host: " + String(host));
+  client.println("Connection: close");
+  client.println();
+
+  // Wait for headers
+  while (client.connected() && !client.available()) delay(10);
+
+  String response = "";
+  bool bodyStarted = false;
+  while (client.available()) {
+    String line = client.readStringUntil('\n');
+    if (!bodyStarted && line == "\r") {
+      bodyStarted = true;
+    } else if (bodyStarted) {
+      response += line;
+    }
+  }
+  client.stop();
+
+  Serial.println("Response: " + response);
+
+  JSONVar json = JSON.parse(response);
+  if (JSON.typeof(json) != "object") {
+    Serial.println("Failed to parse JSON");
+    displayMessage("Sensor " + String(id) + ": ERR", RA8875_RED, RA8875_BLACK, y);
+    return;
+  }
+
+  double temp = (double)json["temperature"];
+  String msg = "Sensor " + String(id) + ": " + String(temp, 2) + " F";
+  Serial.println(msg);
+  displayMessage(msg, RA8875_CYAN, RA8875_BLACK, y);
+}
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  connectWiFi();
+
+  if (!tft.begin(RA8875_800x480)) {
+    Serial.println("RA8875 Not Found!");
+    while (1);
+  }
+
+  tft.displayOn(true);
+  tft.GPIOX(true);
+  tft.PWM1config(true, RA8875_PWM_CLK_DIV1024);
+  tft.PWM1out(255);
+  tft.fillScreen(RA8875_BLACK);
+  displayMessage("Fetching sensors...", RA8875_YELLOW, RA8875_BLACK, 10);
+}
+
+void loop() {
+  tft.fillScreen(RA8875_BLACK);
+  displayMessage("Sensor Temps", RA8875_YELLOW, RA8875_BLACK, 10);
+
+  int y = 70;
+  for (int i = 0; i < NUM_SENSORS; i++) {
+    requestAndDisplaySensor(sensorIDs[i], y);
+    y += 60;
+    delay(200); // small delay between requests
+  }
+
+  delay(10000); // Refresh every 10s
+}
