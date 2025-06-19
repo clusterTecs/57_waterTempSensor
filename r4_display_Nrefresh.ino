@@ -122,7 +122,7 @@ void setup() {
   tft.PWM1out(255);
   tft.fillScreen(RA8875_BLACK);
 
-  displayMessage("Sensor Temps San Benito", RA8875_YELLOW, RA8875_BLACK, 10);
+  displayMessage("Sensor Temps Mission", RA8875_YELLOW, RA8875_BLACK, 10);
 }
 
 void loop() {
